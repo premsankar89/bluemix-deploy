@@ -1,0 +1,17 @@
+<server>
+
+    <featureManager>
+	    <feature>jaxrs-1.1</feature>
+    </featureManager>
+
+    <httpEndpoint id="defaultHttpEndpoint"
+                  host="*"
+                  httpPort="9080"
+                  httpsPort="9443" >
+        <tcpOptions soReuseAddr="true"/>
+    </httpEndpoint>
+
+    <application name="demo" context-root="/" location="${appLocation}" type="war">
+    </application>
+    <httpSession idLength="28"/>
+</server>
