@@ -10,7 +10,6 @@ public class RnrServletContextListener implements ServletContextListener {
 	}
 
 	public void contextInitialized(ServletContextEvent arg0) {
-		// TODO Auto-generated method stub
-		
+		System.out.println("testing that this worked");
 	}
 }
