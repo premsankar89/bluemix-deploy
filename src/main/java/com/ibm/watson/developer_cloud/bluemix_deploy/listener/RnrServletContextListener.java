@@ -28,9 +28,11 @@ public class RnrServletContextListener implements ServletContextListener {
 		// TODO need way to not do this if done before
 		
 		// TODO refactor into helper class or at least into methods
+		System.out.println("got to 1");
 		RetrieveAndRank service = new RetrieveAndRank();
-		
+		System.out.println("got to 2");
 		SolrCluster cluster = createCluster(service);
+		System.out.println("got to 5");
 		
 		uploadConfiguration(service, cluster);
 		
@@ -105,7 +107,9 @@ public class RnrServletContextListener implements ServletContextListener {
 		// 1 create the Solr Cluster
 		// TODO place in easier to manipulate place? how large a cluster?
 		SolrClusterOptions options = new SolrClusterOptions("my-cluster-name", 1);
+		System.out.println("got to 3");
 		SolrCluster cluster = service.createSolrCluster(options);
+		System.out.println("got to 4");
 		System.out.println("Solr cluster: " + cluster);
 		
 		// 2 wait until the Solr Cluster is available
