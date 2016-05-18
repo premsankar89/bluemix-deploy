@@ -3,9 +3,13 @@ declared-services:
   retrieve-and-rank-service:
     label: retrieve_and_rank
     plan: standard
+  document-conversion-service:
+    label: document_conversion
+    plan: standard
 applications:
 - services:
   - retrieve-and-rank-service
+  - document-conversion-service
   name: deploy-test
   path: target/webApp.war
   memory: 512M
