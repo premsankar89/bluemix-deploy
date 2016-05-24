@@ -28,6 +28,8 @@ import org.apache.http.impl.client.BasicCredentialsProvider;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.protocol.HttpContext;
 import org.apache.http.protocol.HttpCoreContext;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.impl.HttpSolrClient;
 import org.apache.solr.client.solrj.request.CollectionAdminRequest;
@@ -43,21 +45,22 @@ import com.ibm.watson.developer_cloud.retrieve_and_rank.v1.model.SolrCluster.Sta
 import com.ibm.watson.developer_cloud.retrieve_and_rank.v1.model.SolrClusterList;
 
 public class RnrSetupThread extends Thread {
+	private static final Logger logger = LogManager.getLogger(RnrSetupThread.class.getName());
 	public void run () {
 				// TODO refactor into helper class or at least into methods
-				System.out.println("got to 1");
+				logger.info("1. Create RnR Service.");
 				RetrieveAndRank service = new RetrieveAndRank();
 				
 				if (isAlreadySetup(service)) {
 					return;
 				}
 				
-				System.out.println("got to 2");
+				logger.info("2. Create Cluster.");
 				SolrCluster cluster = createCluster(service);
-				System.out.println("got to 3");
+				logger.info("3. Upload Cluster Configuration.");
 				
 				uploadConfiguration(service, cluster);
-				System.out.println("got to 4");
+				logger.info("4. Create Collection.");
 				JsonObject vcap = new JsonParser().parse(System.getenv("VCAP_SERVICES")).getAsJsonObject();
                                 JsonObject rr = vcap.getAsJsonArray("retrieve_and_rank").get(0).getAsJsonObject();
                                 JsonObject credentials = rr.getAsJsonObject("credentials");
@@ -67,11 +70,11 @@ public class RnrSetupThread extends Thread {
                                 HttpSolrClient solrClient = getSolrClient(service.getSolrUrl(cluster.getId()), username, password);
 				try{
 				createCollection1(solrClient);
-				System.out.println("got to 5");
+				logger.info("5. Index Documents to Collection.");
 				indexDocuments(solrClient);
 					
 				}catch(Exception e){
-				System.out.println(e);	
+				logger.error("Error initializing Collection"+e.getMessage());	
 				}
 	}
 
@@ -119,6 +122,7 @@ private static HttpSolrClient getSolrClient(String uri, String username, String 
         final Credentials creds = credsProvider.getCredentials(new AuthScope(targetHost.getHostName(),
             targetHost.getPort()));
         if (creds == null) {
+		  logger.error("No creds provided for preemptive auth.");
           throw new HttpException("No creds provided for preemptive auth.");
         }
         authState.update(new BasicScheme(), creds);
@@ -132,7 +136,7 @@ private static HttpSolrClient getSolrClient(String uri, String username, String 
 		try {
                     dataFile = new File(url.toURI());
                 } catch(Exception e) {
-                    System.out.println(dataFile.getPath());
+                    logger.error(e.getMessage());;
                }
             
  JsonArray a =null;
@@ -140,7 +144,7 @@ private static HttpSolrClient getSolrClient(String uri, String username, String 
  	a = (JsonArray)new JsonParser().parse(new FileReader(dataFile)).getAsJsonArray();
  }
  catch(Exception e){
- 	System.out.println(e);
+ 	logger.error("Error parsing JSON document during indexing:"+e.getMessage());
  }
  Collection<SolrInputDocument> docs = new ArrayList<SolrInputDocument>();
  for (int i = 0, size = a.size(); i < size; i++)
@@ -152,47 +156,55 @@ private static HttpSolrClient getSolrClient(String uri, String username, String 
     String title = (String) car.get(RnRConstants.SCHEMA_FIELD_TITLE).getAsString();
     String body = (String) car.get(RnRConstants.SCHEMA_FIELD_BODY).getAsString();
     String sourceUrl = (String) car.get(RnRConstants.SCHEMA_FIELD_SOURCE_URL).getAsString();
+    String contentHtml = (String) car.get(RnRConstants.SCHEMA_FIELD_CONTENT_TEXT).getAsString();
     document.addField(RnRConstants.SCHEMA_FIELD_ID, id);
     document.addField(RnRConstants.SCHEMA_FIELD_TITLE, title);
     document.addField(RnRConstants.SCHEMA_FIELD_BODY, body);
     document.addField(RnRConstants.SCHEMA_FIELD_SOURCE_URL,sourceUrl);
-    // TODO need to ingest html into contentHtml
+    document.addField(RnRConstants.SCHEMA_FIELD_CONTENT_HTML, contentHtml);
     docs.add(document);
   }
-		System.out.println("Indexing document...");
+		logger.info("Indexing document...");
 
 		UpdateResponse addResponse;
 		try {
 			addResponse = solrClient.add("car_collection", docs);
 			
-			System.out.println(addResponse);
+			logger.info(addResponse);
 
 			// Commit the document to the index so that it will be available for searching.
 			solrClient.commit("car_collection");
-			System.out.println("Indexed and committed document.");
+			logger.info("Indexed and committed document.");
 		} catch (SolrServerException e) {
 			// TODO Auto-generated catch block
-			e.printStackTrace();
+			logger.error("Solr Exception while indexing:"+e.getMessage());
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
-			e.printStackTrace();
+			logger.error("Solr IO Exception while indexing:"+e.getMessage());
 		}
 	}
 
-private static void createCollection1(HttpSolrClient solrClient) throws SolrServerException, IOException {
+private static void createCollection1(HttpSolrClient solrClient) {
     final CollectionAdminRequest.Create createCollectionRequest =
         new CollectionAdminRequest.Create();
     createCollectionRequest.setCollectionName("car_collection");
     createCollectionRequest.setConfigName("car_config");
 
-    System.out.println("Creating collection...");
-    final CollectionAdminResponse response = createCollectionRequest.process(solrClient);
+    logger.info("Creating collection...");
+	CollectionAdminResponse response = null;
+    try {
+		response = createCollectionRequest.process(solrClient);
+	} catch (SolrServerException e) {
+		// TODO Auto-generated catch block
+		logger.error(e.getMessage());
+	} catch (IOException e) {
+		// TODO Auto-generated catch block
+		logger.error(e.getMessage());
+	}
     if (!response.isSuccess()) {
-      System.out.println(response.getErrorMessages());
-      throw new IllegalStateException("Failed to create collection: "
-          + response.getErrorMessages().toString());
+      logger.error("Failed to create collection: "+response.getErrorMessages().toString());
     }
-    System.out.println("Collection created.");
+    logger.info("Collection created.");
   }
 
 
@@ -202,24 +214,22 @@ private static void createCollection1(HttpSolrClient solrClient) throws SolrServ
 		try {
                     configZip = new File(url.toURI());
                 } catch(Exception e) {
-                    System.out.println(configZip.getPath());
+                    logger.error("Error uploading configuration: "+e.getMessage());
                }
 		
 		
 		// TODO extract name? error handling, check for 200
 		service.uploadSolrClusterConfigurationZip(cluster.getId(),
 		"car_config", configZip);
-			System.out.println("Uploaded configuration.");
+			logger.info("Uploaded configuration.");
 	}
 
 	private SolrCluster createCluster(RetrieveAndRank service) {
 		// 1 create the Solr Cluster
 		// TODO place in easier to manipulate place? how large a cluster?
 		SolrClusterOptions options = new SolrClusterOptions("car_cluster", 1);
-		System.out.println("got to 3");
 		SolrCluster cluster = service.createSolrCluster(options);
-		System.out.println("got to 4");
-		System.out.println("Solr cluster: " + cluster);
+		logger.info("Solr cluster: " + cluster);
 		
 		// 2 wait until the Solr Cluster is available
 		while (cluster.getStatus() == Status.NOT_AVAILABLE) {
@@ -227,14 +237,14 @@ private static void createCollection1(HttpSolrClient solrClient) throws SolrServ
 			Thread.sleep(10000);
 		} catch (InterruptedException e) {
 			// TODO Auto-generated catch block
-			e.printStackTrace();
+			logger.error(e.getMessage());
 		} // sleep 10 seconds
 		  cluster = service.getSolrCluster(cluster.getId());
-		  System.out.println("Solr cluster status: " + cluster.getStatus());
+		  logger.info("Solr cluster status: " + cluster.getStatus());
 		}
 		
 		// 3 list Solr Clusters
-		System.out.println("Solr clusters: " + service.getSolrClusters());
+		logger.info("Solr clusters: " + service.getSolrClusters());
 		
 		return cluster;
 	}
