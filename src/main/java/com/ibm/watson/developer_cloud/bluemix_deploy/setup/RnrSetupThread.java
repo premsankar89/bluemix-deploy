@@ -156,7 +156,7 @@ private static HttpSolrClient getSolrClient(String uri, String username, String 
     String title = (String) car.get(RnRConstants.SCHEMA_FIELD_TITLE).getAsString();
     String body = (String) car.get(RnRConstants.SCHEMA_FIELD_BODY).getAsString();
     String sourceUrl = (String) car.get(RnRConstants.SCHEMA_FIELD_SOURCE_URL).getAsString();
-    String contentHtml = (String) car.get(RnRConstants.SCHEMA_FIELD_CONTENT_TEXT).getAsString();
+    String contentHtml = (String) car.get(RnRConstants.SCHEMA_FIELD_CONTENT_HTML).getAsString();
     document.addField(RnRConstants.SCHEMA_FIELD_ID, id);
     document.addField(RnRConstants.SCHEMA_FIELD_TITLE, title);
     document.addField(RnRConstants.SCHEMA_FIELD_BODY, body);
