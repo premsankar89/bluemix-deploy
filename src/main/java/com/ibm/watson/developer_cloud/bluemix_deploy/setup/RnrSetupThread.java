@@ -168,12 +168,12 @@ private static HttpSolrClient getSolrClient(String uri, String username, String 
 
 		UpdateResponse addResponse;
 		try {
-			addResponse = solrClient.add("car_collection", docs);
+			addResponse = solrClient.add("cloudhammer", docs);
 			
 			System.out.println(addResponse);
 
 			// Commit the document to the index so that it will be available for searching.
-			solrClient.commit("car_collection");
+			solrClient.commit("cloudhammer");
 			System.out.println("Indexed and committed document.");
 		} catch (SolrServerException e) {
 			// TODO Auto-generated catch block
@@ -187,7 +187,7 @@ private static HttpSolrClient getSolrClient(String uri, String username, String 
 private static void createCollection1(HttpSolrClient solrClient) {
     final CollectionAdminRequest.Create createCollectionRequest =
         new CollectionAdminRequest.Create();
-    createCollectionRequest.setCollectionName("car_collection");
+    createCollectionRequest.setCollectionName("cloudhammer");
     createCollectionRequest.setConfigName("car_config");
 
     System.out.println("Creating collection...");
