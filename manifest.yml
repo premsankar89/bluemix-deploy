@@ -6,10 +6,14 @@ declared-services:
   document-conversion-service:
     label: document_conversion
     plan: standard
+  conversation-experimental:
+    label: conversation
+    plan: experimental
 applications:
 - services:
   - retrieve-and-rank-service
   - document-conversion-service
+  - conversation-experimental
   name: deploy-test
   path: target/webApp.war
   memory: 512M
