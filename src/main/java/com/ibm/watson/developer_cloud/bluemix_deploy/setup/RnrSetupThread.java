@@ -45,53 +45,54 @@ import com.ibm.watson.developer_cloud.retrieve_and_rank.v1.model.SolrCluster.Sta
 import com.ibm.watson.developer_cloud.retrieve_and_rank.v1.model.SolrClusterList;
 
 public class RnrSetupThread extends Thread {
-	private static final Logger logger = LogManager.getLogger(RnrSetupThread.class.getName());
-	public void run () {
-				// TODO refactor into helper class or at least into methods
-				logger.info("1. Create RnR Service.");
-				RetrieveAndRank service = new RetrieveAndRank();
-				
-				if (isAlreadySetup(service)) {
-					return;
-				}
-				
-				logger.info("2. Create Cluster.");
-				SolrCluster cluster = createCluster(service);
-				logger.info("3. Upload Cluster Configuration.");
-				
-				uploadConfiguration(service, cluster);
-				logger.info("4. Create Collection.");
-				JsonObject vcap = new JsonParser().parse(System.getenv("VCAP_SERVICES")).getAsJsonObject();
-                                JsonObject rr = vcap.getAsJsonArray("retrieve_and_rank").get(0).getAsJsonObject();
-                                JsonObject credentials = rr.getAsJsonObject("credentials");
-             
-                                String username = credentials.get("username").getAsString();
-                                String password = credentials.get("password").getAsString();
-                                HttpSolrClient solrClient = getSolrClient(service.getSolrUrl(cluster.getId()), username, password);
-				try{
-				createCollection1(solrClient);
-				logger.info("5. Index Documents to Collection.");
-				indexDocuments(solrClient);
-					
-				}catch(Exception e){
-				logger.error("Error initializing Collection"+e.getMessage());	
-				}
-	}
+  private static final Logger logger = LogManager.getLogger(RnrSetupThread.class.getName());
 
-	/**
-	 * Makes a call to get the number of clusters, if it is > 0
-	 * then we assume the setup has already been done and we skip it
-	 * 
-	 * @param service
-	 * @return
-	 */
-	private boolean isAlreadySetup(RetrieveAndRank service) {
-		SolrClusterList clusters = service.getSolrClusters();
+  public void run() {
+    // TODO refactor into helper class or at least into methods
+    logger.info("1. Create RnR Service.");
+    RetrieveAndRank service = new RetrieveAndRank();
 
-		return clusters.getSolrClusters().size() > 0 ? true : false;
-	}
+    if (isAlreadySetup(service)) {
+      return;
+    }
 
-private static HttpSolrClient getSolrClient(String uri, String username, String password) {
+    logger.info("2. Create Cluster.");
+    SolrCluster cluster = createCluster(service);
+    logger.info("3. Upload Cluster Configuration.");
+
+    uploadConfiguration(service, cluster);
+    logger.info("4. Create Collection.");
+    JsonObject vcap = new JsonParser().parse(System.getenv("VCAP_SERVICES")).getAsJsonObject();
+    JsonObject rr = vcap.getAsJsonArray("retrieve_and_rank").get(0).getAsJsonObject();
+    JsonObject credentials = rr.getAsJsonObject("credentials");
+
+    String username = credentials.get("username").getAsString();
+    String password = credentials.get("password").getAsString();
+    HttpSolrClient solrClient = getSolrClient(service.getSolrUrl(cluster.getId()), username, password);
+    try {
+      createCollection1(solrClient);
+      logger.info("5. Index Documents to Collection.");
+      indexDocuments(solrClient);
+
+    } catch (Exception e) {
+      logger.error("Error initializing Collection" + e.getMessage());
+    }
+  }
+
+  /**
+   * Makes a call to get the number of clusters, if it is > 0 then we assume the setup has already
+   * been done and we skip it
+   * 
+   * @param service
+   * @return
+   */
+  private boolean isAlreadySetup(RetrieveAndRank service) {
+    SolrClusterList clusters = (SolrClusterList) service.getSolrClusters();
+
+    return clusters.getSolrClusters().size() > 0 ? true : false;
+  }
+
+  private static HttpSolrClient getSolrClient(String uri, String username, String password) {
     return new HttpSolrClient(uri, createHttpClient(uri, username, password));
   }
 
@@ -102,149 +103,143 @@ private static HttpSolrClient getSolrClient(String uri, String username, String 
     credentialsProvider.setCredentials(new AuthScope(scopeUri.getHost(), scopeUri.getPort()),
         new UsernamePasswordCredentials(username, password));
 
-    final HttpClientBuilder builder = HttpClientBuilder.create()
-        .setMaxConnTotal(128)
-        .setMaxConnPerRoute(32)
+    final HttpClientBuilder builder = HttpClientBuilder.create().setMaxConnTotal(128).setMaxConnPerRoute(32)
         .setDefaultRequestConfig(RequestConfig.copy(RequestConfig.DEFAULT).setRedirectsEnabled(true).build())
-        .setDefaultCredentialsProvider(credentialsProvider)
-        .addInterceptorFirst(new PreemptiveAuthInterceptor());
+        .setDefaultCredentialsProvider(credentialsProvider).addInterceptorFirst(new PreemptiveAuthInterceptor());
     return builder.build();
   }
-  
-   private static class PreemptiveAuthInterceptor implements HttpRequestInterceptor {
+
+  private static class PreemptiveAuthInterceptor implements HttpRequestInterceptor {
     public void process(final HttpRequest request, final HttpContext context) throws HttpException {
       final AuthState authState = (AuthState) context.getAttribute(HttpClientContext.TARGET_AUTH_STATE);
 
       if (authState.getAuthScheme() == null) {
-        final CredentialsProvider credsProvider = (CredentialsProvider) context
-            .getAttribute(HttpClientContext.CREDS_PROVIDER);
+        final CredentialsProvider credsProvider =
+            (CredentialsProvider) context.getAttribute(HttpClientContext.CREDS_PROVIDER);
         final HttpHost targetHost = (HttpHost) context.getAttribute(HttpCoreContext.HTTP_TARGET_HOST);
-        final Credentials creds = credsProvider.getCredentials(new AuthScope(targetHost.getHostName(),
-            targetHost.getPort()));
+        final Credentials creds =
+            credsProvider.getCredentials(new AuthScope(targetHost.getHostName(), targetHost.getPort()));
         if (creds == null) {
-		  logger.error("No creds provided for preemptive auth.");
+          logger.error("No creds provided for preemptive auth.");
           throw new HttpException("No creds provided for preemptive auth.");
         }
         authState.update(new BasicScheme(), creds);
       }
     }
   }
-  
-	private void indexDocuments(HttpSolrClient solrClient) {
-		URL url = this.getClass().getClassLoader().getResource("file4.json");
-		File dataFile = null;
-		try {
-                    dataFile = new File(url.toURI());
-                } catch(Exception e) {
-                    logger.error(e.getMessage());;
-               }
-            
- JsonArray a =null;
- try{
- 	a = (JsonArray)new JsonParser().parse(new FileReader(dataFile)).getAsJsonArray();
- }
- catch(Exception e){
- 	logger.error("Error parsing JSON document during indexing:"+e.getMessage());
- }
- Collection<SolrInputDocument> docs = new ArrayList<SolrInputDocument>();
- for (int i = 0, size = a.size(); i < size; i++)
-    {
-  	SolrInputDocument document = new SolrInputDocument();
-    JsonObject car = a.get(i).getAsJsonObject();
 
-    int id = car.get(RnRConstants.SCHEMA_FIELD_ID).getAsInt();
-    String title = (String) car.get(RnRConstants.SCHEMA_FIELD_TITLE).getAsString();
-    String body = (String) car.get(RnRConstants.SCHEMA_FIELD_BODY).getAsString();
-    String sourceUrl = (String) car.get(RnRConstants.SCHEMA_FIELD_SOURCE_URL).getAsString();
-    document.addField(RnRConstants.SCHEMA_FIELD_ID, id);
-    document.addField(RnRConstants.SCHEMA_FIELD_TITLE, title);
-    document.addField(RnRConstants.SCHEMA_FIELD_BODY, body);
-    document.addField(RnRConstants.SCHEMA_FIELD_SOURCE_URL,sourceUrl);
-    // TODO need to ingest html into contentHtml
-    docs.add(document);
+  private void indexDocuments(HttpSolrClient solrClient) {
+    URL url = this.getClass().getClassLoader().getResource("file4.json");
+    File dataFile = null;
+    try {
+      dataFile = new File(url.toURI());
+    } catch (Exception e) {
+      logger.error(e.getMessage());;
+    }
+
+    JsonArray a = null;
+    try {
+      a = (JsonArray) new JsonParser().parse(new FileReader(dataFile)).getAsJsonArray();
+    } catch (Exception e) {
+      logger.error("Error parsing JSON document during indexing:" + e.getMessage());
+    }
+    Collection<SolrInputDocument> docs = new ArrayList<SolrInputDocument>();
+    for (int i = 0, size = a.size(); i < size; i++) {
+      SolrInputDocument document = new SolrInputDocument();
+      JsonObject car = a.get(i).getAsJsonObject();
+
+      int id = car.get(RnRConstants.SCHEMA_FIELD_ID).getAsInt();
+      String title = (String) car.get(RnRConstants.SCHEMA_FIELD_TITLE).getAsString();
+      String body = (String) car.get(RnRConstants.SCHEMA_FIELD_BODY).getAsString();
+      String sourceUrl = (String) car.get(RnRConstants.SCHEMA_FIELD_SOURCE_URL).getAsString();
+      String contentHtml = (String) car.get(RnRConstants.SCHEMA_FIELD_CONTENT_HTML).getAsString();
+      document.addField(RnRConstants.SCHEMA_FIELD_ID, id);
+      document.addField(RnRConstants.SCHEMA_FIELD_TITLE, title);
+      document.addField(RnRConstants.SCHEMA_FIELD_BODY, body);
+      document.addField(RnRConstants.SCHEMA_FIELD_SOURCE_URL, sourceUrl);
+      document.addField(RnRConstants.SCHEMA_FIELD_CONTENT_HTML, contentHtml);
+      docs.add(document);
+    }
+    logger.info("Indexing document...");
+
+    UpdateResponse addResponse;
+    try {
+      addResponse = solrClient.add("car_collection", docs);
+
+      logger.info(addResponse);
+
+      // Commit the document to the index so that it will be available for searching.
+      solrClient.commit("car_collection");
+      logger.info("Indexed and committed document.");
+    } catch (SolrServerException e) {
+      // TODO Auto-generated catch block
+      logger.error("Solr Exception while indexing:" + e.getMessage());
+    } catch (IOException e) {
+      // TODO Auto-generated catch block
+      logger.error("Solr IO Exception while indexing:" + e.getMessage());
+    }
   }
-		logger.info("Indexing document...");
 
-		UpdateResponse addResponse;
-		try {
-			addResponse = solrClient.add("car_collection", docs);
-			
-			logger.info(addResponse);
-
-			// Commit the document to the index so that it will be available for searching.
-			solrClient.commit("car_collection");
-			logger.info("Indexed and committed document.");
-		} catch (SolrServerException e) {
-			// TODO Auto-generated catch block
-			logger.error("Solr Exception while indexing:"+e.getMessage());
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			logger.error("Solr IO Exception while indexing:"+e.getMessage());
-		}
-	}
-
-private static void createCollection1(HttpSolrClient solrClient) {
-    final CollectionAdminRequest.Create createCollectionRequest =
-        new CollectionAdminRequest.Create();
+  private static void createCollection1(HttpSolrClient solrClient) {
+    final CollectionAdminRequest.Create createCollectionRequest = new CollectionAdminRequest.Create();
     createCollectionRequest.setCollectionName("car_collection");
     createCollectionRequest.setConfigName("car_config");
 
     logger.info("Creating collection...");
-	CollectionAdminResponse response = null;
+    CollectionAdminResponse response = null;
     try {
-		response = createCollectionRequest.process(solrClient);
-	} catch (SolrServerException e) {
-		// TODO Auto-generated catch block
-		logger.error(e.getMessage());
-	} catch (IOException e) {
-		// TODO Auto-generated catch block
-		logger.error(e.getMessage());
-	}
+      response = createCollectionRequest.process(solrClient);
+    } catch (SolrServerException e) {
+      // TODO Auto-generated catch block
+      logger.error(e.getMessage());
+    } catch (IOException e) {
+      // TODO Auto-generated catch block
+      logger.error(e.getMessage());
+    }
     if (!response.isSuccess()) {
-      logger.error("Failed to create collection: "+response.getErrorMessages().toString());
+      logger.error("Failed to create collection: " + response.getErrorMessages().toString());
     }
     logger.info("Collection created.");
   }
 
 
-	private void uploadConfiguration(RetrieveAndRank service, SolrCluster cluster) {
-		URL url = this.getClass().getClassLoader().getResource("solr_config.zip");
-		File configZip = null;
-		try {
-                    configZip = new File(url.toURI());
-                } catch(Exception e) {
-                    logger.error("Error uploading configuration: "+e.getMessage());
-               }
-		
-		
-		// TODO extract name? error handling, check for 200
-		service.uploadSolrClusterConfigurationZip(cluster.getId(),
-		"car_config", configZip);
-			logger.info("Uploaded configuration.");
-	}
+  private void uploadConfiguration(RetrieveAndRank service, SolrCluster cluster) {
+    URL url = this.getClass().getClassLoader().getResource("solr_config.zip");
+    File configZip = null;
+    try {
+      configZip = new File(url.toURI());
+    } catch (Exception e) {
+      logger.error("Error uploading configuration: " + e.getMessage());
+    }
 
-	private SolrCluster createCluster(RetrieveAndRank service) {
-		// 1 create the Solr Cluster
-		// TODO place in easier to manipulate place? how large a cluster?
-		SolrClusterOptions options = new SolrClusterOptions("car_cluster", 1);
-		SolrCluster cluster = service.createSolrCluster(options);
-		logger.info("Solr cluster: " + cluster);
-		
-		// 2 wait until the Solr Cluster is available
-		while (cluster.getStatus() == Status.NOT_AVAILABLE) {
-		  try {
-			Thread.sleep(10000);
-		} catch (InterruptedException e) {
-			// TODO Auto-generated catch block
-			logger.error(e.getMessage());
-		} // sleep 10 seconds
-		  cluster = service.getSolrCluster(cluster.getId());
-		  logger.info("Solr cluster status: " + cluster.getStatus());
-		}
-		
-		// 3 list Solr Clusters
-		logger.info("Solr clusters: " + service.getSolrClusters());
-		
-		return cluster;
-	}
+
+    // TODO extract name? error handling, check for 200
+    service.uploadSolrClusterConfigurationZip(cluster.getId(), "car_config", configZip);
+    logger.info("Uploaded configuration.");
+  }
+
+  private SolrCluster createCluster(RetrieveAndRank service) {
+    // 1 create the Solr Cluster
+    // TODO place in easier to manipulate place? how large a cluster?
+    SolrClusterOptions options = new SolrClusterOptions("car_cluster", 1);
+    SolrCluster cluster = (SolrCluster) service.createSolrCluster(options);
+    logger.info("Solr cluster: " + cluster);
+
+    // 2 wait until the Solr Cluster is available
+    while (cluster.getStatus() == Status.NOT_AVAILABLE) {
+      try {
+        Thread.sleep(10000);
+      } catch (InterruptedException e) {
+        // TODO Auto-generated catch block
+        logger.error(e.getMessage());
+      } // sleep 10 seconds
+      cluster = (SolrCluster) service.getSolrCluster(cluster.getId());
+      logger.info("Solr cluster status: " + cluster.getStatus());
+    }
+
+    // 3 list Solr Clusters
+    logger.info("Solr clusters: " + service.getSolrClusters());
+
+    return cluster;
+  }
 }
