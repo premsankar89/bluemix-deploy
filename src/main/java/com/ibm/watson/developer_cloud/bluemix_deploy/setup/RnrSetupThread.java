@@ -1,16 +1,13 @@
 package com.ibm.watson.developer_cloud.bluemix_deploy.setup;
 
 import java.io.File;
-import java.io.IOException;
 import java.io.FileReader;
-import java.lang.Exception;
-import java.net.URL;
+import java.io.IOException;
 import java.net.URI;
-import java.util.Collection;
+import java.net.URL;
 import java.util.ArrayList;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonParser;
+import java.util.Collection;
+
 import org.apache.http.HttpException;
 import org.apache.http.HttpHost;
 import org.apache.http.HttpRequest;
@@ -37,22 +34,53 @@ import org.apache.solr.client.solrj.response.CollectionAdminResponse;
 import org.apache.solr.client.solrj.response.UpdateResponse;
 import org.apache.solr.common.SolrInputDocument;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.ibm.watson.developer_cloud.bluemix_deploy.listener.RnRConstants;
 import com.ibm.watson.developer_cloud.retrieve_and_rank.v1.RetrieveAndRank;
+import com.ibm.watson.developer_cloud.retrieve_and_rank.v1.model.Ranker;
 import com.ibm.watson.developer_cloud.retrieve_and_rank.v1.model.SolrCluster;
-import com.ibm.watson.developer_cloud.retrieve_and_rank.v1.model.SolrClusterOptions;
 import com.ibm.watson.developer_cloud.retrieve_and_rank.v1.model.SolrCluster.Status;
-import com.ibm.watson.developer_cloud.retrieve_and_rank.v1.model.SolrClusterList;
+import com.ibm.watson.developer_cloud.retrieve_and_rank.v1.model.SolrClusterOptions;
+import com.ibm.watson.developer_cloud.retrieve_and_rank.v1.model.SolrClusters;
+import com.ibm.watson.developer_cloud.util.CredentialUtils;
 
 public class RnrSetupThread extends Thread {
   private static final Logger logger = LogManager.getLogger(RnrSetupThread.class.getName());
+  public static String RANKER_ID=null;
 
   public void run() {
-    // TODO refactor into helper class or at least into methods
+    String username = "";
+    String password = "";
+
+    logger.info("0. Get username and password");
+    String[] creds = CredentialUtils.getUserNameAndPassword("retrieve_and_rank");
+    if (creds == null || creds.length != 2) {
+      throw new IllegalArgumentException("The Retieve and Rank Credentials have not been specified.");
+    }
+    username = creds[0];
+    password = creds[1];
+
     logger.info("1. Create RnR Service.");
     RetrieveAndRank service = new RetrieveAndRank();
+    service.setUsernameAndPassword(username, password);
 
     if (isAlreadySetup(service)) {
+      logger.info("A cluster is already setup,checking for a Ranker");
+      RANKER_ID = System.getenv("RANKER_ID");
+      if(RANKER_ID == null){
+        if(service.getRankers().execute().getRankers().size() > 1){
+          RANKER_ID = service.getRankers().execute().getRankers().get(0).getId();
+        }
+        if(RANKER_ID == null || RANKER_ID.isEmpty()){
+          logger.info("Found a cluster setup but not a Ranker");
+          logger.info("6. Create the Ranker");
+          createRanker(service);
+          return;
+        }
+      }
+      logger.info("Found a cluster and ranker already setup.");
       return;
     }
 
@@ -62,17 +90,14 @@ public class RnrSetupThread extends Thread {
 
     uploadConfiguration(service, cluster);
     logger.info("4. Create Collection.");
-    JsonObject vcap = new JsonParser().parse(System.getenv("VCAP_SERVICES")).getAsJsonObject();
-    JsonObject rr = vcap.getAsJsonArray("retrieve_and_rank").get(0).getAsJsonObject();
-    JsonObject credentials = rr.getAsJsonObject("credentials");
-
-    String username = credentials.get("username").getAsString();
-    String password = credentials.get("password").getAsString();
     HttpSolrClient solrClient = getSolrClient(service.getSolrUrl(cluster.getId()), username, password);
     try {
       createCollection1(solrClient);
       logger.info("5. Index Documents to Collection.");
       indexDocuments(solrClient);
+      
+      logger.info("6. Create the Ranker");
+      createRanker(service);
 
     } catch (Exception e) {
       logger.error("Error initializing Collection" + e.getMessage());
@@ -87,8 +112,7 @@ public class RnrSetupThread extends Thread {
    * @return
    */
   private boolean isAlreadySetup(RetrieveAndRank service) {
-    SolrClusterList clusters = (SolrClusterList) service.getSolrClusters();
-
+    SolrClusters clusters = service.getSolrClusters().execute();
     return clusters.getSolrClusters().size() > 0 ? true : false;
   }
 
@@ -164,12 +188,12 @@ public class RnrSetupThread extends Thread {
 
     UpdateResponse addResponse;
     try {
-      addResponse = solrClient.add("car_collection", docs);
+      addResponse = solrClient.add(RnRConstants.COLLECTION_NAME, docs);
 
       logger.info(addResponse);
 
       // Commit the document to the index so that it will be available for searching.
-      solrClient.commit("car_collection");
+      solrClient.commit(RnRConstants.COLLECTION_NAME);
       logger.info("Indexed and committed document.");
     } catch (SolrServerException e) {
       // TODO Auto-generated catch block
@@ -182,18 +206,16 @@ public class RnrSetupThread extends Thread {
 
   private static void createCollection1(HttpSolrClient solrClient) {
     final CollectionAdminRequest.Create createCollectionRequest = new CollectionAdminRequest.Create();
-    createCollectionRequest.setCollectionName("car_collection");
-    createCollectionRequest.setConfigName("car_config");
+    createCollectionRequest.setCollectionName(RnRConstants.COLLECTION_NAME);
+    createCollectionRequest.setConfigName(RnRConstants.CONFIGURATION_NAME);
 
     logger.info("Creating collection...");
     CollectionAdminResponse response = null;
     try {
       response = createCollectionRequest.process(solrClient);
     } catch (SolrServerException e) {
-      // TODO Auto-generated catch block
       logger.error(e.getMessage());
     } catch (IOException e) {
-      // TODO Auto-generated catch block
       logger.error(e.getMessage());
     }
     if (!response.isSuccess()) {
@@ -211,17 +233,15 @@ public class RnrSetupThread extends Thread {
     } catch (Exception e) {
       logger.error("Error uploading configuration: " + e.getMessage());
     }
-
-
     // TODO extract name? error handling, check for 200
-    service.uploadSolrClusterConfigurationZip(cluster.getId(), "car_config", configZip);
+    service.uploadSolrClusterConfigurationZip(cluster.getId(), RnRConstants.CONFIGURATION_NAME, configZip);
     logger.info("Uploaded configuration.");
   }
 
   private SolrCluster createCluster(RetrieveAndRank service) {
     // 1 create the Solr Cluster
     // TODO place in easier to manipulate place? how large a cluster?
-    SolrClusterOptions options = new SolrClusterOptions("car_cluster", 1);
+    SolrClusterOptions options = new SolrClusterOptions(RnRConstants.CLUSTER_NAME, 1);
     SolrCluster cluster = (SolrCluster) service.createSolrCluster(options);
     logger.info("Solr cluster: " + cluster);
 
@@ -230,7 +250,6 @@ public class RnrSetupThread extends Thread {
       try {
         Thread.sleep(10000);
       } catch (InterruptedException e) {
-        // TODO Auto-generated catch block
         logger.error(e.getMessage());
       } // sleep 10 seconds
       cluster = (SolrCluster) service.getSolrCluster(cluster.getId());
@@ -242,4 +261,35 @@ public class RnrSetupThread extends Thread {
 
     return cluster;
   }
+  
+  /**
+   *  This method creates a ranker with the existing training data and 
+   *  waits until the 'Training' phase is complete and the Ranker status is 'Available'.
+   *  
+   * @param service
+   */
+  private void createRanker(RetrieveAndRank service) {
+    URL url = this.getClass().getClassLoader().getResource("trainingdata.csv");
+    File trainingFile = null;
+    try {
+      trainingFile = new File(url.toURI());
+    } catch (Exception e) {
+      logger.error(e.getMessage());
+    }
+    Ranker ranker = service.createRanker(RnRConstants.RANKER_NAME, trainingFile).execute();
+    String rankerId = ranker.getId();
+    logger.info("Creating a ranker with the rankerId- "+  rankerId);
+    ranker = service.getRankerStatus(rankerId).execute();
+    logger.info(ranker.getStatus().toString());
+    while (ranker.getStatus().toString().equalsIgnoreCase("Training")) {
+      try {
+        Thread.sleep(10000);
+      } catch (InterruptedException e) {
+        logger.error(e.getMessage());
+      } // sleep 10 seconds
+      ranker = service.getRankerStatus(rankerId).execute();
+      logger.info("Ranker status: " + ranker.getStatus());
+    }
+  }
+  
 }
