@@ -242,7 +242,7 @@ public class RnrSetupThread extends Thread {
     // 1 create the Solr Cluster
     // TODO place in easier to manipulate place? how large a cluster?
     SolrClusterOptions options = new SolrClusterOptions(RnRConstants.CLUSTER_NAME, 1);
-    SolrCluster cluster = (SolrCluster) service.createSolrCluster(options);
+    SolrCluster cluster = (SolrCluster) service.createSolrCluster(options).execute();
     logger.info("Solr cluster: " + cluster);
 
     // 2 wait until the Solr Cluster is available
