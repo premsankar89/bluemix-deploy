@@ -92,7 +92,7 @@ public class RnrSetupThread extends Thread {
     logger.info("4. Create Collection.");
     HttpSolrClient solrClient = getSolrClient(service.getSolrUrl(cluster.getId()), username, password);
     try {
-      createCollection1(solrClient);
+      createCollection(solrClient);
       logger.info("5. Index Documents to Collection.");
       indexDocuments(solrClient);
       
@@ -206,7 +206,7 @@ public class RnrSetupThread extends Thread {
     }
   }
 
-  private static void createCollection1(HttpSolrClient solrClient) {
+  private static void createCollection(HttpSolrClient solrClient) {
     final CollectionAdminRequest.Create createCollectionRequest = new CollectionAdminRequest.Create();
     createCollectionRequest.setCollectionName(RnRConstants.COLLECTION_NAME);
     createCollectionRequest.setConfigName(RnRConstants.CONFIGURATION_NAME);
@@ -256,6 +256,13 @@ public class RnrSetupThread extends Thread {
       } // sleep 10 seconds
       cluster = (SolrCluster) service.getSolrCluster(cluster.getId()).execute();
       logger.info("Solr cluster status: " + cluster.getStatus());
+    }
+    
+    // sleep even after cluster reports ready, they report it too soon sometimes
+    try {
+      Thread.sleep(10000);
+    } catch (InterruptedException e) {
+      logger.error(e.getMessage());
     }
 
     // 3 list Solr Clusters
