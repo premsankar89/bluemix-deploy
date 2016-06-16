@@ -252,7 +252,7 @@ public class RnrSetupThread extends Thread {
       } catch (InterruptedException e) {
         logger.error(e.getMessage());
       } // sleep 10 seconds
-      cluster = (SolrCluster) service.getSolrCluster(cluster.getId());
+      cluster = (SolrCluster) service.getSolrCluster(cluster.getId()).execute();
       logger.info("Solr cluster status: " + cluster.getStatus());
     }
 
