@@ -70,7 +70,7 @@ public class RnrSetupThread extends Thread {
       logger.info("A cluster is already setup,checking for a Ranker");
       RANKER_ID = System.getenv("RANKER_ID");
       if(RANKER_ID == null){
-        if(service.getRankers().execute().getRankers().size() > 1){
+        if(service.getRankers().execute().getRankers().size() > 0){
           RANKER_ID = service.getRankers().execute().getRankers().get(0).getId();
         }
         if(RANKER_ID == null || RANKER_ID.isEmpty()){
