@@ -99,6 +99,8 @@ public class RnrSetupThread extends Thread {
       logger.info("6. Create the Ranker");
       createRanker(service);
 
+      logger.info("Setup complete");
+      
     } catch (Exception e) {
       logger.error("Error initializing Collection" + e.getMessage());
     }
