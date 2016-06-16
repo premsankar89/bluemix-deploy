@@ -234,7 +234,7 @@ public class RnrSetupThread extends Thread {
       logger.error("Error uploading configuration: " + e.getMessage());
     }
     // TODO extract name? error handling, check for 200
-    service.uploadSolrClusterConfigurationZip(cluster.getId(), RnRConstants.CONFIGURATION_NAME, configZip);
+    service.uploadSolrClusterConfigurationZip(cluster.getId(), RnRConstants.CONFIGURATION_NAME, configZip).execute();
     logger.info("Uploaded configuration.");
   }
 
@@ -257,7 +257,7 @@ public class RnrSetupThread extends Thread {
     }
 
     // 3 list Solr Clusters
-    logger.info("Solr clusters: " + service.getSolrClusters());
+    logger.info("Solr clusters: " + service.getSolrClusters().execute());
 
     return cluster;
   }
